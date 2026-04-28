@@ -1,11 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
 	"os"
-	"strings"
 )
 
 func main() {
@@ -20,20 +20,24 @@ func main() {
 	}
 	defer file.Close()
 
-	buf := make([]byte, 8)
-	var curr_line string
+	var curr_line string = ""
 	for {
-		_, err := file.Read(buf)
+		buf := make([]byte, 8)
+		n, err := file.Read(buf)
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
 			log.Fatalf("erro at reading file, err: %v", err.Error())
 		}
-		parts := strings.Split(string(buf), "\n")
-		last_part := parts[len(parts)-1]
+
+		buf = buf[:n]
+
+		parts := bytes.Split(buf, []byte{'\n'})
+
+		last_part := string(parts[len(parts)-1])
 		for p := range parts[:len(parts)-1] {
-			fmt.Printf("read: %s\n", curr_line+parts[p])
+			fmt.Printf("read: %s\n", curr_line+string(parts[p]))
 			curr_line = ""
 		}
 		curr_line += last_part
@@ -43,4 +47,4 @@ func main() {
 	}
 }
 
-func getLinesChannel(f io.ReadCloser) <-chan string
+// func getLinesChannel(f io.ReadCloser) <-chan string
