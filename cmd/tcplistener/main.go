@@ -10,14 +10,15 @@ import (
 
 func main() {
 
-	var ngonx string = "-- NGonx --"
+	var ngonx string = "-- NGonx TCP--"
 	fmt.Println(ngonx)
 
-
-	ln, err := net.Listen("tcp", ":8080")
+	ln, err := net.Listen("tcp", "127.0.0.1:4002")
 	if err != nil {
 		log.Fatalf("error at listening, err: %v", err.Error())
 	}
+
+	fmt.Printf("tcp listening at %s\n", ln.Addr().String())
 
 	for {
 		conn, err := ln.Accept()
