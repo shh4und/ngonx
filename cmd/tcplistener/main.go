@@ -9,17 +9,10 @@ import (
 )
 
 func main() {
-
-	var ngonx string = "-- NGonx TCP--"
-	fmt.Println(ngonx)
-
-	ln, err := net.Listen("tcp", "127.0.0.1:4002")
+	ln, err := net.Listen("tcp", "localhost:4002")
 	if err != nil {
 		log.Fatalf("error at listening, err: %v", err.Error())
 	}
-
-	fmt.Printf("tcp listening at %s\n", ln.Addr().String())
-
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -28,7 +21,7 @@ func main() {
 
 		chLines := getLinesChannel(conn)
 		for line := range chLines {
-			fmt.Printf("read: %s\n", string(line))
+			fmt.Printf("%s\n", string(line))
 		}
 
 	}
@@ -47,12 +40,12 @@ func getLinesChannel(conn net.Conn) <-chan []byte {
 				if err == io.EOF {
 					break
 				}
-				log.Fatalf("erro at reading conn, err: %v", err.Error())
+				log.Fatalf("error at reading conn, err: %v", err.Error())
 			}
 
 			buf = buf[:n]
 
-			parts := bytes.Split(buf, []byte{'\n'})
+			parts := bytes.Split(buf, []byte("\r\n"))
 			last_part := parts[len(parts)-1]
 			for p := range parts[:len(parts)-1] {
 				chLine <- bytes.Join([][]byte{curr_line, parts[p]}, []byte{})
@@ -67,8 +60,6 @@ func getLinesChannel(conn net.Conn) <-chan []byte {
 		}
 		defer conn.Close()
 		defer close(chLine)
-
-		log.Println("conn & channel closed")
 	}()
 
 	return chLine
