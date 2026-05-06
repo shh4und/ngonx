@@ -3,12 +3,38 @@ package request
 import (
 	"errors"
 	"io"
-	"log"
 	"regexp"
 	"strings"
 )
 
 var IsUpperLetter = regexp.MustCompile(`^[A-Z]+$`).MatchString
+var CRLFStr string = "\r\n"
+var CRLFByte []byte = []byte("\r\n")
+var ErrMalformedMsg error = errors.New("malformed message")
+var ErrIncompleteRequestLine error = errors.New("incomplete request line")
+var ErrUnsuportedHTTPVersion error = errors.New("unsupported http version")
+
+// var ErrMalformedMsg error = errors.New("malformed message")
+
+//	var MethodsSet = map[string]bool{
+//		"GET":     true,
+//		"HEAD":    true,
+//		"POST":    true,
+//		"PUT":     true,
+//		"DELETE":  true,
+//		"CONNECT": true,
+//		"OPTIONS": true,
+//		"TRACE":   true,
+//	}
+
+const BufferSize int = 8
+
+type ParserState int
+
+const (
+	Initialized ParserState = iota
+	Done
+)
 
 type RequestLine struct {
 	Method      string
@@ -18,44 +44,36 @@ type RequestLine struct {
 
 type Request struct {
 	RequestLine
+	ParserState
 }
 
-// var MethodsSet = map[string]bool{
-// 	"GET":     true,
-// 	"HEAD":    true,
-// 	"POST":    true,
-// 	"PUT":     true,
-// 	"DELETE":  true,
-// 	"CONNECT": true,
-// 	"OPTIONS": true,
-// 	"TRACE":   true,
-// }
+func NewRequest() *Request {
+	return &Request{ParserState: Initialized}
+}
 
-var ERROR_MALFORMED_MSG error = errors.New("malformed message")
-var ERROR_INCOMPLETE_REQ_LINE error = errors.New("incomplete request line")
-
-var ERROR_UNSUPPORTED_HTTP error = errors.New("unsupported http version")
-
-// var ERROR_MALFORMED_MSG error = errors.New("malformed message")
+func (r *Request) parse(data []byte) (int, error)
+func (r *Request) done() bool {
+	return r.ParserState == Done
+}
 
 func parseRequestLine(text []byte, requestLine *RequestLine) (int, error) {
-	var n int
-	lineIdx := strings.Index(string(text), "\r\n")
+	lineIdx := strings.Index(string(text), CRLFStr)
 	if lineIdx == -1 {
-		return 0, ERROR_MALFORMED_MSG
+		return 0, nil
 	}
 	reqLine := string(text[:lineIdx])
-	n = len(reqLine)
-	reqParts := strings.Split(reqLine, " ")
+	// bytes consumidos
+	n := lineIdx + len(CRLFStr)
 
+	reqParts := strings.Split(reqLine, " ")
 	httpParts := strings.Split(reqParts[len(reqParts)-1], "/")
 
 	if !IsUpperLetter(reqParts[0]) || len(reqParts) != 3 || len(httpParts) != 2 {
-		return n, ERROR_INCOMPLETE_REQ_LINE
+		return n, ErrIncompleteRequestLine
 	}
 
 	if httpParts[1] != "1.1" {
-		return n, ERROR_UNSUPPORTED_HTTP
+		return n, ErrUnsuportedHTTPVersion
 	}
 	requestLine.Method = reqParts[0]
 	requestLine.RequestURI = reqParts[1]
@@ -64,38 +82,22 @@ func parseRequestLine(text []byte, requestLine *RequestLine) (int, error) {
 }
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
+	request := NewRequest()
+	buf := make([]byte, BufferSize, BufferSize)
+	readToIndex := 0
 
-	text, err := io.ReadAll(reader)
-	if err != nil {
-		log.Fatalf("error at reading all reader, err: %v", err)
+	// TODO:
+	for !request.done() {
+		n, err := reader.Read(buf[readToIndex:])
+		if err != nil {
+			return nil, err
+		}
+
+		readToIndex += n
+		if n == 0 {
+			return nil, errors.New("TODO:")
+		}
 	}
-	reqLineParts := RequestLine{}
-	n, err := parseRequestLine(text, &reqLineParts)
-	if err != nil {
-		return nil, err
-	}
 
-	return &Request{RequestLine: reqLineParts}, nil
-}
-
-type chunkReader struct {
-	data            string
-	numBytesPerRead int
-	pos             int
-}
-
-// Read reads up to len(p) or numBytesPerRead bytes from the string per call
-// its useful for simulating reading a variable number of bytes per chunk from a network connection
-func (cr *chunkReader) Read(p []byte) (n int, err error) {
-	if cr.pos >= len(cr.data) {
-		return 0, io.EOF
-	}
-	endIndex := cr.pos + cr.numBytesPerRead
-	if endIndex > len(cr.data) {
-		endIndex = len(cr.data)
-	}
-	n = copy(p, cr.data[cr.pos:endIndex])
-	cr.pos += n
-
-	return n, nil
+	return request, nil
 }
