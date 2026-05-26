@@ -1,10 +1,10 @@
 package request
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"regexp"
-	"strings"
 )
 
 var IsUpperLetter = regexp.MustCompile(`^[A-Z]+$`).MatchString
@@ -13,6 +13,7 @@ var CRLFByte []byte = []byte("\r\n")
 var ErrMalformedMsg error = errors.New("malformed message")
 var ErrIncompleteRequestLine error = errors.New("incomplete request line")
 var ErrUnsuportedHTTPVersion error = errors.New("unsupported http version")
+var ErrRequestInErrorState error = errors.New("parse entered in error state")
 
 // var ErrMalformedMsg error = errors.New("malformed message")
 
@@ -27,13 +28,14 @@ var ErrUnsuportedHTTPVersion error = errors.New("unsupported http version")
 //		"TRACE":   true,
 //	}
 
-const BufferSize int = 8
+const BufferSize int = 1024
 
 type ParserState int
 
 const (
-	Initialized ParserState = iota
-	Done
+	StateInitialized ParserState = iota
+	StateDone
+	StateError
 )
 
 type RequestLine struct {
@@ -48,55 +50,93 @@ type Request struct {
 }
 
 func NewRequest() *Request {
-	return &Request{ParserState: Initialized}
+	return &Request{ParserState: StateInitialized}
 }
 
-func (r *Request) parse(data []byte) (int, error)
-func (r *Request) done() bool {
-	return r.ParserState == Done
-}
+func (r *Request) parse(data []byte) (int, error) {
+	read := 0
+outer:
+	for {
+		switch r.ParserState {
+		case StateError:
+			return 0, ErrRequestInErrorState
 
-func parseRequestLine(text []byte, requestLine *RequestLine) (int, error) {
-	lineIdx := strings.Index(string(text), CRLFStr)
-	if lineIdx == -1 {
-		return 0, nil
+		case StateInitialized:
+			n, rl, err := parseRequestLine(data[read:])
+			if err != nil {
+				r.ParserState = StateError
+				return 0, err
+			}
+
+			if n == 0 {
+				break outer
+			}
+
+			r.RequestLine = *rl
+			read += n
+			r.ParserState = StateDone
+
+		case StateDone:
+			break outer
+		}
 	}
-	reqLine := string(text[:lineIdx])
+	return read, nil
+}
+
+func (r *Request) done() bool {
+	return r.ParserState == StateDone || r.ParserState == StateError
+}
+
+func parseRequestLine(text []byte) (int, *RequestLine, error) {
+	lineIdx := bytes.Index(text, CRLFByte)
+	if lineIdx == -1 {
+		return 0, nil, nil
+	}
+	reqLine := text[:lineIdx]
 	// bytes consumidos
 	n := lineIdx + len(CRLFStr)
 
-	reqParts := strings.Split(reqLine, " ")
-	httpParts := strings.Split(reqParts[len(reqParts)-1], "/")
+	reqParts := bytes.Split(reqLine, []byte(" "))
+	httpParts := bytes.Split(reqParts[len(reqParts)-1], []byte("/"))
 
-	if !IsUpperLetter(reqParts[0]) || len(reqParts) != 3 || len(httpParts) != 2 {
-		return n, ErrIncompleteRequestLine
+	if !IsUpperLetter(string(reqParts[0])) || len(reqParts) != 3 || len(httpParts) != 2 {
+		return n, nil, ErrIncompleteRequestLine
 	}
 
-	if httpParts[1] != "1.1" {
-		return n, ErrUnsuportedHTTPVersion
+	if string(httpParts[1]) != "1.1" {
+		return n, nil, ErrUnsuportedHTTPVersion
 	}
-	requestLine.Method = reqParts[0]
-	requestLine.RequestURI = reqParts[1]
-	requestLine.HttpVersion = httpParts[1]
-	return n, nil
+
+	return n, &RequestLine{
+		Method:      string(reqParts[0]),
+		RequestURI:  string(reqParts[1]),
+		HttpVersion: string(httpParts[1]),
+	}, nil
 }
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	request := NewRequest()
-	buf := make([]byte, BufferSize, BufferSize)
-	readToIndex := 0
+	buf := make([]byte, BufferSize)
+	bufLen := 0
 
 	// TODO:
 	for !request.done() {
-		n, err := reader.Read(buf[readToIndex:])
+		n, err := reader.Read(buf[bufLen:])
 		if err != nil {
 			return nil, err
 		}
+		// if n == 0 {
+		// 	return nil, errors.New("TODO:")
+		// }
 
-		readToIndex += n
-		if n == 0 {
-			return nil, errors.New("TODO:")
+		bufLen += n
+
+		parsedN, err := request.parse(buf[:bufLen])
+		if err != nil {
+			return nil, err
 		}
+		copy(buf, buf[parsedN:bufLen])
+		bufLen -= parsedN
 	}
 
 	return request, nil

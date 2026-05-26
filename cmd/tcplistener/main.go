@@ -1,11 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"log"
 	"net"
+	"ngonx/internal/request"
 )
 
 func main() {
@@ -19,16 +18,16 @@ func main() {
 			log.Fatalf("error at accepting conn, err: %v", err.Error())
 		}
 
-		chLines := getLinesChannel(conn)
-		for line := range chLines {
-			fmt.Printf("%s\n", string(line))
+		request, err := request.RequestFromReader(conn)
+		if err != nil {
+			log.Fatalf("error at reading request: %v", err.Error())
 		}
-
+		fmt.Printf("Request line:\n- Method: %s\n- Target: %s\n- Version: %s", request.Method, request.RequestURI, request.HttpVersion)
 	}
 
 }
 
-func getLinesChannel(conn net.Conn) <-chan []byte {
+/* func getLinesChannel(conn net.Conn) <-chan []byte {
 	chLine := make(chan []byte, 1)
 
 	go func() {
@@ -63,4 +62,4 @@ func getLinesChannel(conn net.Conn) <-chan []byte {
 	}()
 
 	return chLine
-}
+} */
