@@ -28,7 +28,7 @@ var ErrRequestInErrorState error = errors.New("parse entered in error state")
 //		"TRACE":   true,
 //	}
 
-const BufferSize int = 1024
+const BufferSize int = 4096
 
 type ParserState int
 
