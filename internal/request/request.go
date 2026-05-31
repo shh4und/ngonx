@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"ngonx/internal/headers"
 	"regexp"
 )
 
 var isUpperLetter = regexp.MustCompile(`^[A-Z]+$`).MatchString
-var  isRequestLineValid= regexp.MustCompile(`/(\w+)\s+(.*?)\s+(.*)/`).MatchString
+var isRequestLineValid = regexp.MustCompile(`/(\w+)\s+(.*?)\s+(.*)/`).MatchString
 
 var CRLFStr string = "\r\n"
 var CRLFByte []byte = []byte("\r\n")
@@ -35,9 +36,12 @@ const BufferSize int = 4096
 type ParserState int
 
 const (
-	StateInitialized ParserState = iota
-	StateDone
-	StateError
+	StateReqLineInitialized ParserState = iota
+	StateReqLineDone
+	StateReqLineError
+	StateHeadersInitialized
+	StateHeadersDone
+	StateHeadersError
 )
 
 type RequestLine struct {
@@ -48,11 +52,12 @@ type RequestLine struct {
 
 type Request struct {
 	RequestLine
+	headers.Headers
 	ParserState
 }
 
 func NewRequest() *Request {
-	return &Request{ParserState: StateInitialized}
+	return &Request{Headers: headers.NewHeaders(),ParserState: StateReqLineInitialized}
 }
 
 func (r *Request) parse(data []byte) (int, error) {
@@ -60,13 +65,13 @@ func (r *Request) parse(data []byte) (int, error) {
 outer:
 	for {
 		switch r.ParserState {
-		case StateError:
+		case StateReqLineError:
 			return 0, ErrRequestInErrorState
 
-		case StateInitialized:
+		case StateReqLineInitialized:
 			n, rl, err := parseRequestLine(data[read:])
 			if err != nil {
-				r.ParserState = StateError
+				r.ParserState = StateReqLineError
 				return 0, err
 			}
 
@@ -76,17 +81,48 @@ outer:
 
 			r.RequestLine = *rl
 			read += n
-			r.ParserState = StateDone
+			r.ParserState = StateReqLineDone
 
-		case StateDone:
+		case StateReqLineDone:
+			r.ParserState = StateHeadersInitialized
+
+		case StateHeadersInitialized:
+			n, done, err := r.Headers.Parse((data[read:]))
+
+			if err != nil {
+				r.ParserState = StateHeadersError
+				return 0, err
+			}
+			if n == 0 {
+				break outer
+			}
+			read += n
+			if done {
+				r.ParserState = StateHeadersDone
+			}
+
+		case StateHeadersDone:
 			break outer
+
 		}
+
 	}
 	return read, nil
 }
 
-func (r *Request) done() bool {
-	return r.ParserState == StateDone || r.ParserState == StateError
+func (r *Request) reqLineDone() bool {
+	return r.ParserState == StateReqLineDone
+}
+
+func (r *Request) reqLineError() bool {
+	return r.ParserState == StateReqLineError
+}
+func (r *Request) headersDone() bool {
+	return r.ParserState == StateHeadersDone
+}
+
+func (r *Request) headersError() bool {
+	return r.ParserState == StateHeadersError
 }
 
 func parseRequestLine(text []byte) (int, *RequestLine, error) {
@@ -122,14 +158,17 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	bufLen := 0
 
 	// TODO:
-	for !request.done() {
+	for !request.headersDone() && !request.headersError() && !request.reqLineError() {
 		n, err := reader.Read(buf[bufLen:])
+
+		if n == 0 && err == io.EOF {
+			break
+		}
+
 		if err != nil {
 			return nil, err
 		}
-		// if n == 0 {
-		// 	return nil, errors.New("TODO:")
-		// }
+
 
 		bufLen += n
 
