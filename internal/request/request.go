@@ -7,7 +7,9 @@ import (
 	"regexp"
 )
 
-var IsUpperLetter = regexp.MustCompile(`^[A-Z]+$`).MatchString
+var isUpperLetter = regexp.MustCompile(`^[A-Z]+$`).MatchString
+var  isRequestLineValid= regexp.MustCompile(`/(\w+)\s+(.*?)\s+(.*)/`).MatchString
+
 var CRLFStr string = "\r\n"
 var CRLFByte []byte = []byte("\r\n")
 var ErrMalformedMsg error = errors.New("malformed message")
@@ -99,7 +101,7 @@ func parseRequestLine(text []byte) (int, *RequestLine, error) {
 	reqParts := bytes.Split(reqLine, []byte(" "))
 	httpParts := bytes.Split(reqParts[len(reqParts)-1], []byte("/"))
 
-	if !IsUpperLetter(string(reqParts[0])) || len(reqParts) != 3 || len(httpParts) != 2 {
+	if !isUpperLetter(string(reqParts[0])) || len(reqParts) != 3 || len(httpParts) != 2 {
 		return n, nil, ErrIncompleteRequestLine
 	}
 
