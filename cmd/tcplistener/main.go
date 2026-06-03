@@ -22,7 +22,15 @@ func main() {
 		if err != nil {
 			log.Fatalf("error at reading request: %v", err.Error())
 		}
-		fmt.Printf("Request line:\n- Method: %s\n- Target: %s\n- Version: %s", request.Method, request.RequestURI, request.HttpVersion)
+		fmt.Printf("Request line:\n- Method: %s\n- Target: %s\n- Version: %s\n", request.Method, request.RequestURI, request.HttpVersion)
+		fmt.Println("Headers:")
+		for key, value := range request.Headers {
+			fmt.Printf("- %s: %s\n", key, value)
+		}
+		if request.Body != nil {
+			fmt.Printf("Body:\n- %s", string(request.Body))
+		}
+		// conn.Close()
 	}
 
 }

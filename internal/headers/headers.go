@@ -59,13 +59,16 @@ func (h Headers) Parse(data []byte) (int, bool, error) {
 			return numBytesRead, false, ErrHeaderLineNotValid
 		}
 
-		if _, exists := h[strings.ToLower(string(fieldName))]; !exists {
-			// Store with lowercase key for case-insensitive lookup
-			h[strings.ToLower(string(fieldName))] = string(fieldValue)
+		// Store with lowercase key for case-insensitive lookup
+		fieldNameLower := strings.ToLower(string(fieldName))
+
+		if _, exists := h[fieldNameLower]; !exists {
+
+			h[fieldNameLower] = string(fieldValue)
 			continue
 		}
 		// multiple values for a single header key is valid based on [ RFC 9110 5.2 ]
-		h[strings.ToLower(string(fieldName))] = strings.Join([]string{h[strings.ToLower(string(fieldName))],string(fieldValue) }, ", ")
+		h[fieldNameLower] = strings.Join([]string{h[fieldNameLower], string(fieldValue)}, ", ")
 
 	}
 

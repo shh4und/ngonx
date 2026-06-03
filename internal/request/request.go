@@ -6,6 +6,7 @@ import (
 	"io"
 	"ngonx/internal/headers"
 	"regexp"
+	"strconv"
 )
 
 var isUpperLetter = regexp.MustCompile(`^[A-Z]+$`).MatchString
@@ -42,6 +43,9 @@ const (
 	StateHeadersInitialized
 	StateHeadersDone
 	StateHeadersError
+	StateBodyInitialized
+	StateBodyDone
+	StateBodyError
 )
 
 type RequestLine struct {
@@ -53,15 +57,18 @@ type RequestLine struct {
 type Request struct {
 	RequestLine
 	headers.Headers
+	Body []byte
 	ParserState
 }
 
 func NewRequest() *Request {
-	return &Request{Headers: headers.NewHeaders(),ParserState: StateReqLineInitialized}
+	return &Request{Headers: headers.NewHeaders(), ParserState: StateReqLineInitialized}
 }
 
 func (r *Request) parse(data []byte) (int, error) {
 	read := 0
+	contentLength := 0
+	var err error
 outer:
 	for {
 		switch r.ParserState {
@@ -87,7 +94,7 @@ outer:
 			r.ParserState = StateHeadersInitialized
 
 		case StateHeadersInitialized:
-			n, done, err := r.Headers.Parse((data[read:]))
+			n, done, err := r.Headers.Parse(data[read:])
 
 			if err != nil {
 				r.ParserState = StateHeadersError
@@ -102,8 +109,29 @@ outer:
 			}
 
 		case StateHeadersDone:
-			break outer
+			contentLengthValue, exists := r.Headers["content-length"]
+			if !exists {
+				r.ParserState = StateBodyDone
+				continue
+			}
+			contentLength, err = strconv.Atoi(contentLengthValue)
+			if err != nil {
+				r.ParserState = StateBodyError
+				return 0, err
+			}
+			r.ParserState = StateBodyInitialized
+			r.Body = make([]byte, contentLength)
 
+		case StateBodyInitialized:
+			// TODO: fix this mf problem
+			n := copy(r.Body, data[read:])
+			read += n
+			if read >= read + contentLength{
+				r.ParserState = StateBodyDone
+			}
+
+		case StateBodyDone:
+			break outer
 		}
 
 	}
@@ -123,6 +151,14 @@ func (r *Request) headersDone() bool {
 
 func (r *Request) headersError() bool {
 	return r.ParserState == StateHeadersError
+}
+
+func (r *Request) bodyDone() bool {
+	return r.ParserState == StateBodyDone
+}
+
+func (r *Request) bodyError() bool {
+	return r.ParserState == StateBodyError
 }
 
 func parseRequestLine(text []byte) (int, *RequestLine, error) {
@@ -157,8 +193,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	buf := make([]byte, BufferSize)
 	bufLen := 0
 
-	// TODO:
-	for !request.headersDone() && !request.headersError() && !request.reqLineError() {
+	for !request.bodyDone() && !request.bodyError() && !request.headersDone() && !request.headersError() && !request.reqLineError() {
 		n, err := reader.Read(buf[bufLen:])
 
 		if n == 0 && err == io.EOF {
@@ -168,7 +203,6 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		if err != nil {
 			return nil, err
 		}
-
 
 		bufLen += n
 
