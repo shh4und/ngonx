@@ -55,13 +55,9 @@ func TestRequestParseWithFragmentedChunks(t *testing.T) {
 		numBytesPerRead: 1,
 	}
 	r, err := RequestFromReader(reader)
-	require.NoError(t, err)
-	require.NotNil(t, r)
-	assert.Equal(t, "GET", r.Method)
-	assert.Equal(t, "/", r.RequestURI)
-	assert.Equal(t, "1.1", r.HttpVersion)
-	assert.Equal(t, "example.com", r.Headers["host"])
-	assert.Equal(t, "42", r.Headers["content-length"])
+	require.Error(t, err)
+	require.Nil(t, r)
+
 }
 
 func TestRequestParseWithLargeChunks(t *testing.T) {
@@ -71,14 +67,9 @@ func TestRequestParseWithLargeChunks(t *testing.T) {
 		numBytesPerRead: 4096,
 	}
 	r, err := RequestFromReader(reader)
-	require.NoError(t, err)
-	require.NotNil(t, r)
-	assert.Equal(t, "POST", r.Method)
-	assert.Equal(t, "/api/v1/users", r.RequestURI)
-	assert.Equal(t, "1.1", r.HttpVersion)
-	assert.Equal(t, "api.example.com", r.Headers["host"])
-	assert.Equal(t, "application/json", r.Headers["content-type"])
-	assert.Equal(t, "100", r.Headers["content-length"])
+	require.Error(t, err)
+	assert.Equal(t, err, ErrIncompleteBody)
+	require.Nil(t, r)
 }
 
 func TestRequestParseMultipleHeaderValues(t *testing.T) {
@@ -152,11 +143,10 @@ func TestRequestParseHeaderCaseInsensitivity(t *testing.T) {
 		numBytesPerRead: 15,
 	}
 	r, err := RequestFromReader(reader)
-	require.NoError(t, err)
-	require.NotNil(t, r)
-	assert.Equal(t, "localhost", r.Headers["host"])
-	assert.Equal(t, "50", r.Headers["content-length"])
-	assert.Equal(t, "curl", r.Headers["user-agent"])
+	require.Error(t, err)
+	require.Nil(t, r)
+	assert.Equal(t, err, ErrIncompleteBody)
+
 }
 
 func TestRequestParseHeaderWithLeadingTrailingSpaces(t *testing.T) {

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"io"
+
+	// "log/slog"
 	"ngonx/internal/headers"
 	"regexp"
 	"strconv"
@@ -18,6 +20,7 @@ var ErrMalformedMsg error = errors.New("malformed message")
 var ErrIncompleteRequestLine error = errors.New("incomplete request line")
 var ErrUnsuportedHTTPVersion error = errors.New("unsupported http version")
 var ErrRequestInErrorState error = errors.New("parse entered in error state")
+var ErrIncompleteBody error = errors.New("unexpected EOF: body incomplete")
 
 // var ErrMalformedMsg error = errors.New("malformed message")
 
@@ -57,17 +60,18 @@ type RequestLine struct {
 type Request struct {
 	RequestLine
 	headers.Headers
-	Body []byte
+	Body          []byte
+	contentLength int
+	bodyWritten   int // Track how many bytes we've actually written to Body
 	ParserState
 }
 
 func NewRequest() *Request {
-	return &Request{Headers: headers.NewHeaders(), ParserState: StateReqLineInitialized}
+	return &Request{Headers: headers.NewHeaders(), contentLength: 0, bodyWritten: 0, ParserState: StateReqLineInitialized}
 }
 
 func (r *Request) parse(data []byte) (int, error) {
 	read := 0
-	contentLength := 0
 	var err error
 outer:
 	for {
@@ -109,26 +113,47 @@ outer:
 			}
 
 		case StateHeadersDone:
-			contentLengthValue, exists := r.Headers["content-length"]
+			contentLengthStr, exists := r.Headers["content-length"]
 			if !exists {
 				r.ParserState = StateBodyDone
 				continue
 			}
-			contentLength, err = strconv.Atoi(contentLengthValue)
+			r.contentLength, err = strconv.Atoi(contentLengthStr)
 			if err != nil {
 				r.ParserState = StateBodyError
 				return 0, err
 			}
-			r.ParserState = StateBodyInitialized
-			r.Body = make([]byte, contentLength)
+			// slog.Info("headers done: ", "r.contentLength", r.contentLength)
+			if r.contentLength > 0 {
+				r.ParserState = StateBodyInitialized
+				r.Body = make([]byte, r.contentLength)
+				continue
+			}
 
 		case StateBodyInitialized:
-			// TODO: fix this mf problem
-			n := copy(r.Body, data[read:])
-			read += n
-			if read >= read + contentLength{
-				r.ParserState = StateBodyDone
+			currData := data[read:]
+			if len(currData) == 0 {
+				break outer
 			}
+
+			// How many bytes do we still need?
+			bytesNeeded := r.contentLength - r.bodyWritten
+			// How many bytes do we have available?
+			bytesAvailable := len(currData)
+			// Take the minimum
+			remaining := min(bytesNeeded, bytesAvailable)
+
+			// Copy to the correct position in Body
+			n := copy(r.Body[r.bodyWritten:], currData[:remaining])
+			r.bodyWritten += n
+			// slog.Info("body init: ", "read", read, "bytesNeeded", bytesNeeded, "bytesAvailable", bytesAvailable, "copied", n, "bodyWritten", r.bodyWritten)
+			read += n
+			if r.bodyWritten >= r.contentLength {
+				r.ParserState = StateBodyDone
+				continue
+			}
+			// Continue processing in the same loop iteration if we have more data
+			continue
 
 		case StateBodyDone:
 			break outer
@@ -197,6 +222,11 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		n, err := reader.Read(buf[bufLen:])
 
 		if n == 0 && err == io.EOF {
+			// If we're waiting for body and got EOF before it's complete, that's an error
+			if request.ParserState == StateBodyInitialized && request.bodyWritten < request.contentLength {
+				request.ParserState = StateBodyError
+				return nil, ErrIncompleteBody
+			}
 			break
 		}
 
