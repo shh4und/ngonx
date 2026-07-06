@@ -14,35 +14,32 @@ type Server struct {
 }
 
 func Serve(port int) (*Server, error) {
-	server := &Server{
-		inShutdown: atomic.Bool{},
-	}
-
-	server.inShutdown.Store(false)
 
 	addressPort := strconv.Itoa(port)
 
 	listener, err := net.Listen("tcp", ":"+addressPort)
 	if err != nil {
 		log.Printf("error at listening, err: %v", err.Error())
+		return nil, err
 	}
-	server.port = port
-	server.listener = listener
+	server := &Server{
+		port:     port,
+		listener: listener,
+	}
+	server.inShutdown.Store(false)
 
-	go func() {
-		server.listen()
-	}()
+	go server.listen()
 
 	return server, nil
 }
 
 func (s *Server) Close() error {
+	s.inShutdown.Store(true)
 	err := s.listener.Close()
 	if err != nil {
 		log.Printf("error at closing listener, err: %v", err.Error())
 	}
 
-	s.inShutdown.Store(true)
 	return err
 }
 
@@ -57,25 +54,31 @@ func (s *Server) listen() {
 			continue
 		}
 
-		go func(conn net.Conn) {
-			s.handle(conn)
-		}(conn)
-
+		// same as: go func(conn net.Conn) { s.handle(conn) }(conn)
+		go s.handle(conn)
 	}
 }
 
 func (s *Server) handle(conn net.Conn) {
+	defer conn.Close()
 
-	response := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello <b>World!!</b>")
+	response := []byte("HTTP/1.1 200 OK\r\n" +
+		"Content-Type: text/html; charset=utf-8\r\n" +
+		"Content-Length: 116\r\n" +
+		"Connection: close\r\n\r\n" +
+		"<!DOCTYPE html>\r\n" +
+		"<html>\r\n" +
+		"<head>\r\n" +
+		"<title>Hello World</title>\r\n" +
+		"</head>\r\n" +
+		"<body>\r\n" +
+		"Hello <b>World!!</b>\r\n" +
+		"</body>\r\n" +
+		"</html>")
 
 	n, err := conn.Write(response)
 	if err != nil {
 		log.Printf("error at writing response, err: %v", err.Error())
 	}
-	log.Printf("wrote %d bytes", n)
-	err = conn.Close()
-	if err != nil {
-		log.Printf("error at closing connection, err: %v", err.Error())
-	}
-	s.inShutdown.Store(true)
+	log.Printf("wrote %d bytes to %s", n, conn.RemoteAddr().String())
 }
