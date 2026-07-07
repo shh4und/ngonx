@@ -3,8 +3,11 @@ package server
 import (
 	"log"
 	"net"
+	"os"
 	"strconv"
 	"sync/atomic"
+
+	"ngonx/internal/response"
 )
 
 type Server struct {
@@ -62,23 +65,28 @@ func (s *Server) listen() {
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 
-	response := []byte("HTTP/1.1 200 OK\r\n" +
-		"Content-Type: text/html; charset=utf-8\r\n" +
-		"Content-Length: 116\r\n" +
-		"Connection: close\r\n\r\n" +
-		"<!DOCTYPE html>\r\n" +
-		"<html>\r\n" +
-		"<head>\r\n" +
-		"<title>Hello World</title>\r\n" +
-		"</head>\r\n" +
-		"<body>\r\n" +
-		"Hello <b>World!!</b>\r\n" +
-		"</body>\r\n" +
-		"</html>")
+	file, err := os.Open("static/landing.html")
+	if err != nil {
+		log.Printf("error at opening file, err: %v", err.Error())
+		return
+	}
+	defer file.Close()
 
-	n, err := conn.Write(response)
+	fileInfo, err := file.Stat()
+	if err != nil {
+		log.Printf("error at getting file info, err: %v", err.Error())
+		return
+	}
+	fileSize := int(fileInfo.Size())
+	buffer := make([]byte, fileSize)
+	_, err = file.Read(buffer)
+	if err != nil {
+		log.Printf("error at reading file, err: %v", err.Error())
+		return
+	}
+	err = response.WriteResponse(conn, 200, fileSize, nil, nil, buffer)
 	if err != nil {
 		log.Printf("error at writing response, err: %v", err.Error())
 	}
-	log.Printf("wrote %d bytes to %s", n, conn.RemoteAddr().String())
+	log.Printf("wrote %d bytes to %s", fileSize, conn.RemoteAddr().String())
 }
