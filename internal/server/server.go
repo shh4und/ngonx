@@ -84,7 +84,7 @@ func (s *Server) handle(conn net.Conn) {
 		log.Printf("error at reading file, err: %v", err.Error())
 		return
 	}
-	err = response.WriteResponse(conn, 200, fileSize, nil, nil, buffer)
+	err = response.WriteResponse(conn, 200, fileSize, nil, nil, nil, nil, nil, nil, buffer)
 	if err != nil {
 		log.Printf("error at writing response, err: %v", err.Error())
 	}

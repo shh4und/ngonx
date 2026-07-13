@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"ngonx/internal/headers"
 	"strconv"
+	"time"
 )
 
 var ErrMissingExpectedHeader = errors.New("missing expected header")
@@ -28,7 +30,12 @@ var reasonPhrases = map[StatusCode]string{
 	StatusInternalServerError: "Internal Server Error",
 }
 
-var defaultHeaders []string = []string{"content-length", "content-type", "connection"}
+var defaultHeaders []string = []string{"content-length", "content-type", "connection", "date", "content-encoding", "cache-control", "server"}
+
+func getCurrentUTCDate() string {
+	t := time.Now().UTC()
+	return t.Format(http.TimeFormat)
+}
 
 func WriteStatusLine(writer io.Writer, status StatusCode) error {
 	text, ok := reasonPhrases[status]
@@ -36,12 +43,11 @@ func WriteStatusLine(writer io.Writer, status StatusCode) error {
 		return ErrUnknownStatusCode
 	}
 
-
 	_, err := writer.Write([]byte("HTTP/1.1 " + strconv.Itoa(int(status)) + " " + text + "\r\n"))
 	return err
 }
 
-func GetDefaultHeaders(contentLen int, contentType *string, connection *string) headers.Headers {
+func GetDefaultHeaders(contentLen int, contentType *string, connection *string, currDate *string, contentEncoding *string, cacheControl *string, server *string) headers.Headers {
 	h := headers.NewHeaders()
 	h["content-length"] = strconv.Itoa(contentLen)
 
@@ -55,11 +61,32 @@ func GetDefaultHeaders(contentLen int, contentType *string, connection *string) 
 	} else {
 		h["connection"] = "close"
 	}
+
+	if currDate != nil {
+		h["date"] = *currDate
+	} else {
+		h["date"] = getCurrentUTCDate()
+	}
+	if contentEncoding != nil {
+		h["content-encoding"] = *contentEncoding
+	} else {
+		h["content-encoding"] = "identity"
+	}
+	if cacheControl != nil {
+		h["cache-control"] = *cacheControl
+	} else {
+		h["cache-control"] = "no-cache"
+	}
+	if server != nil {
+		h["server"] = *server
+	} else {
+		h["server"] = "NGONX/Apache"
+	}
 	return h
 }
 
-func WriteHeaders(writer io.Writer, responseContentLen int, contentType *string, connection *string) error {
-	h := GetDefaultHeaders(responseContentLen, contentType, connection)
+func WriteHeaders(writer io.Writer, responseContentLen int, contentType *string, connection *string, currDate *string, contentEncoding *string, cacheControl *string, server *string) error {
+	h := GetDefaultHeaders(responseContentLen, contentType, connection, currDate, contentEncoding, cacheControl, server)
 	for _, key := range defaultHeaders {
 		value, ok := h[key]
 		if !ok {
@@ -74,11 +101,11 @@ func WriteHeaders(writer io.Writer, responseContentLen int, contentType *string,
 	return err
 }
 
-func WriteResponse(writer io.Writer, status int, responseContentLen int, contentType *string, connection *string, body []byte) error {
+func WriteResponse(writer io.Writer, status int, responseContentLen int, contentType *string, connection *string, currDate *string, contentEncoding *string, cacheControl *string, server *string, body []byte) error {
 	if err := WriteStatusLine(writer, StatusCode(status)); err != nil {
 		return err
 	}
-	if err := WriteHeaders(writer, responseContentLen, contentType, connection); err != nil {
+	if err := WriteHeaders(writer, responseContentLen, contentType, connection, currDate, contentEncoding, cacheControl, server); err != nil {
 		return ErrWritingHeaders
 	}
 
