@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"ngonx/internal/headers"
 	"strconv"
 	"time"
@@ -24,6 +23,8 @@ const (
 	StatusInternalServerError StatusCode = 500
 )
 
+const dateRFC7231Format string = "Mon, 02 Jan 2006 15:04:05 GMT"
+
 var reasonPhrases = map[StatusCode]string{
 	StatusOK:                  "OK",
 	StatusNotFound:            "Not Found",
@@ -34,7 +35,7 @@ var defaultHeaders []string = []string{"content-length", "content-type", "connec
 
 func getCurrentUTCDate() string {
 	t := time.Now().UTC()
-	return t.Format(http.TimeFormat)
+	return t.Format(dateRFC7231Format)
 }
 
 func WriteStatusLine(writer io.Writer, status StatusCode) error {
