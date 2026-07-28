@@ -19,6 +19,7 @@ type StatusCode int
 
 const (
 	StatusOK                  StatusCode = 200
+	StatusBadRequest          StatusCode = 400
 	StatusNotFound            StatusCode = 404
 	StatusInternalServerError StatusCode = 500
 )
@@ -27,6 +28,7 @@ const dateRFC7231Format string = "Mon, 02 Jan 2006 15:04:05 GMT"
 
 var reasonPhrases = map[StatusCode]string{
 	StatusOK:                  "OK",
+	StatusBadRequest:          "Bad Request",
 	StatusNotFound:            "Not Found",
 	StatusInternalServerError: "Internal Server Error",
 }
@@ -111,11 +113,9 @@ func WriteResponse(writer io.Writer, status int, responseContentLen int, content
 	}
 
 	// response body
-	_, err := writer.Write([]byte("\r\n"))
-
-	_, err = writer.Write(body)
+	_, err := writer.Write(body)
 	if err != nil {
 		return ErrWritingBody
 	}
-	return err
+	return nil
 }

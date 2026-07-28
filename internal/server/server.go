@@ -1,22 +1,32 @@
 package server
 
 import (
+	"bytes"
+	"io"
 	"log"
 	"net"
-	"os"
 	"strconv"
 	"sync/atomic"
 
+	"ngonx/internal/request"
 	"ngonx/internal/response"
 )
+
+type Handler func(w io.Writer, req *request.Request) *HandlerError
+
+type HandlerError struct {
+	StatusCode response.StatusCode
+	Message    string
+}
 
 type Server struct {
 	port       int
 	listener   net.Listener
 	inShutdown atomic.Bool
+	handler    Handler
 }
 
-func Serve(port int) (*Server, error) {
+func Serve(port int, handler Handler) (*Server, error) {
 
 	addressPort := strconv.Itoa(port)
 
@@ -28,6 +38,7 @@ func Serve(port int) (*Server, error) {
 	server := &Server{
 		port:     port,
 		listener: listener,
+		handler:  handler,
 	}
 	server.inShutdown.Store(false)
 
@@ -62,31 +73,47 @@ func (s *Server) listen() {
 	}
 }
 
+func writeHandlerError(w io.Writer, handlerErr *HandlerError) {
+	body := []byte(handlerErr.Message)
+	response.WriteStatusLine(w, handlerErr.StatusCode)
+	response.WriteHeaders(w, len(body), nil, nil, nil, nil, nil, nil)
+	w.Write(body)
+}
+
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 
-	file, err := os.Open("static/landing.html")
+	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		log.Printf("error at opening file, err: %v", err.Error())
+		log.Printf("error at parsing request, err: %v", err.Error())
 		return
 	}
-	defer file.Close()
 
-	fileInfo, err := file.Stat()
-	if err != nil {
-		log.Printf("error at getting file info, err: %v", err.Error())
+	// buffer for handler to write reponse
+	buf := new(bytes.Buffer)
+
+	handlerErr := s.handler(buf, req)
+	if handlerErr != nil {
+		writeHandlerError(buf, handlerErr)
 		return
 	}
-	fileSize := int(fileInfo.Size())
-	buffer := make([]byte, fileSize)
-	_, err = file.Read(buffer)
+
+	body := buf.Bytes()
+	err = response.WriteStatusLine(conn, response.StatusOK)
 	if err != nil {
-		log.Printf("error at reading file, err: %v", err.Error())
+		log.Printf("error at writing status line, err: %v", err.Error())
 		return
 	}
-	err = response.WriteResponse(conn, 200, fileSize, nil, nil, nil, nil, nil, nil, buffer)
+	err = response.WriteHeaders(conn, len(body), nil, nil, nil, nil, nil, nil)
 	if err != nil {
-		log.Printf("error at writing response, err: %v", err.Error())
+		log.Printf("%v: %v", response.ErrWritingHeaders, err.Error())
+		return
 	}
-	log.Printf("wrote %d bytes to %s", fileSize, conn.RemoteAddr().String())
+	_, err = conn.Write(body)
+	if err != nil {
+		log.Printf("%v: %v", response.ErrWritingBody, err.Error())
+		return
+	}
+
+	log.Printf("wrote %d bytes to %s", len(body), conn.RemoteAddr().String())
 }
