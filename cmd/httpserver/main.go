@@ -15,7 +15,7 @@ import (
 const port = 4002
 
 func main() {
-	handler := fileHandler(".")
+	handler := fakeRouterHandler
 	server, err := server.Serve(port, handler)
 	if err != nil {
 		log.Fatalf("Error starting server: %v", err)
@@ -29,26 +29,49 @@ func main() {
 	log.Println("Server gracefully stopped")
 }
 
-func fileHandler(baseDir string) server.Handler {
-	return func(w io.Writer, req *request.Request) *server.HandlerError {
+func fakeRouterHandler(w io.Writer, req *request.Request) *server.HandlerError {
+	log.Println("req line -> ", req.RequestLine.RequestURI)
+	switch req.RequestLine.RequestURI {
+	case "/static/landing.html":
+		handlerError := fileHandler(w, req)
+		return handlerError
 
-		filePath := filepath.Join(baseDir, req.RequestLine.RequestURI)
-
-		file, err := os.Open(filePath)
-		if err != nil {
-			return &server.HandlerError{StatusCode: response.StatusNotFound,
-				Message: "File not found\n",
-			}
-		}
-		defer file.Close()
-
-		_, err = io.Copy(w, file)
-		if err != nil {
-			return &server.HandlerError{StatusCode: response.StatusInternalServerError,
-				Message: "Failed to read file\n",
-			}
-		}
-
-		return nil
+	case "/":
+		handlerError := defaultHandler(w, req)
+		return handlerError
 	}
+
+	return nil
+}
+
+func defaultHandler(w io.Writer, req *request.Request) *server.HandlerError {
+	_, err := w.Write([]byte("<strong>Greetings! :)</strong><br/>" + "Welcome to the '" + req.RequestLine.RequestURI + "'<br/>"))
+	if err != nil {
+		return &server.HandlerError{StatusCode: response.StatusInternalServerError,
+			Message: "Failed to read file\n",
+		}
+	}
+	return nil
+}
+
+func fileHandler(w io.Writer, req *request.Request) *server.HandlerError {
+
+	filePath := filepath.Join(".", req.RequestLine.RequestURI)
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return &server.HandlerError{StatusCode: response.StatusNotFound,
+			Message: "File not found\n",
+		}
+	}
+	defer file.Close()
+
+	_, err = io.Copy(w, file)
+	if err != nil {
+		return &server.HandlerError{StatusCode: response.StatusInternalServerError,
+			Message: "Failed to read file\n",
+		}
+	}
+
+	return nil
 }
