@@ -19,18 +19,42 @@ type StatusCode int
 
 const (
 	StatusOK                  StatusCode = 200
+	StatusCreated             StatusCode = 201
+	StatusNoContent           StatusCode = 204
+	StatusMultipleChoices     StatusCode = 300
+	StatusMovedPermanently    StatusCode = 301
+	StatusFound               StatusCode = 302
+	StatusSeeOther            StatusCode = 303
+	StatusNotModified         StatusCode = 304
+	StatusTemporaryRedirect   StatusCode = 307
+	StatusPermanentRedirect   StatusCode = 308
 	StatusBadRequest          StatusCode = 400
+	StatusUnauthorized        StatusCode = 401
+	StatusForbidden           StatusCode = 403
 	StatusNotFound            StatusCode = 404
 	StatusInternalServerError StatusCode = 500
+	StatusServiceUnavailable  StatusCode = 503
 )
 
 const dateRFC7231Format string = "Mon, 02 Jan 2006 15:04:05 GMT"
 
 var reasonPhrases = map[StatusCode]string{
 	StatusOK:                  "OK",
+	StatusCreated:             "Created",
+	StatusNoContent:           "No Content",
+	StatusMultipleChoices:     "Multiple Choices",
+	StatusMovedPermanently:    "Moved Permanently",
+	StatusFound:               "Found",
+	StatusSeeOther:            "See Other",
+	StatusNotModified:         "Not Modified",
+	StatusTemporaryRedirect:   "Temporary Redirect",
+	StatusPermanentRedirect:   "Permanent Redirect",
 	StatusBadRequest:          "Bad Request",
+	StatusUnauthorized:        "Unauthorized",
+	StatusForbidden:           "Forbidden",
 	StatusNotFound:            "Not Found",
 	StatusInternalServerError: "Internal Server Error",
+	StatusServiceUnavailable:  "Service Unavailable",
 }
 
 var defaultHeaders []string = []string{"content-length", "content-type", "connection", "date", "content-encoding", "cache-control", "server"}
