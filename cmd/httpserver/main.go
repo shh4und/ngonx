@@ -32,7 +32,7 @@ func main() {
 func fakeRouterHandler(w io.Writer, req *request.Request) *server.HandlerError {
 	log.Println("req line -> ", req.RequestLine.RequestURI)
 	switch req.RequestLine.RequestURI {
-	case "/static/landing.html":
+	case "/landing.html":
 		handlerError := fileHandler(w, req)
 		return handlerError
 
@@ -41,7 +41,10 @@ func fakeRouterHandler(w io.Writer, req *request.Request) *server.HandlerError {
 		return handlerError
 	}
 
-	return nil
+	return &server.HandlerError{
+		StatusCode: response.StatusNotFound,
+		Message:    "Not found\n",
+	}
 }
 
 func defaultHandler(w io.Writer, req *request.Request) *server.HandlerError {
@@ -55,8 +58,9 @@ func defaultHandler(w io.Writer, req *request.Request) *server.HandlerError {
 }
 
 func fileHandler(w io.Writer, req *request.Request) *server.HandlerError {
-
-	filePath := filepath.Join(".", req.RequestLine.RequestURI)
+	baseDir := "static"
+	safePath := filepath.Base(req.RequestLine.RequestURI)
+	filePath := filepath.Join(baseDir, safePath)
 
 	file, err := os.Open(filePath)
 	if err != nil {

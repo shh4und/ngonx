@@ -95,6 +95,12 @@ func (s *Server) handle(conn net.Conn) {
 	handlerErr := s.handler(buf, req)
 	if handlerErr != nil {
 		writeHandlerError(buf, handlerErr)
+		body := buf.Bytes()
+		_, err = conn.Write(body)
+		if err != nil {
+			log.Printf("%v: %v", response.ErrWritingBody, err.Error())
+			return
+		}
 		return
 	}
 

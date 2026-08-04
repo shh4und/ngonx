@@ -51,6 +51,16 @@ const (
 	StateBodyError
 )
 
+type ChunkedState int
+
+const (
+	ChunkedStateAwatingSize ChunkedState = iota
+	ChunkedStateAwatingData
+	ChunkedStateAwatingCRLF
+	ChunkedStateDone
+	ChunkedStateError
+)
+
 type RequestLine struct {
 	Method      string
 	RequestURI  string
@@ -64,6 +74,10 @@ type Request struct {
 	contentLength int
 	bodyWritten   int // Track how many bytes we've actually written to Body
 	ParserState
+
+	chunkedBody      bool
+	chunkedState     ChunkedState
+	chunkedRemaining int
 }
 
 func NewRequest() *Request {
@@ -218,7 +232,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	buf := make([]byte, BufferSize)
 	bufLen := 0
 
-	for !request.bodyDone() && !request.bodyError() && !request.headersDone() && !request.headersError() && !request.reqLineError() {
+	for !request.bodyDone() && !request.bodyError() && !request.reqLineError() {
 		n, err := reader.Read(buf[bufLen:])
 
 		if n == 0 && err == io.EOF {
