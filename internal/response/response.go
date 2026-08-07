@@ -86,7 +86,7 @@ func GetDefaultHeaders(contentLen int, contentType *string, connection *string, 
 	if connection != nil {
 		h["connection"] = *connection
 	} else {
-		h["connection"] = "close"
+		h["connection"] = "keep-alive"
 	}
 
 	if currDate != nil {

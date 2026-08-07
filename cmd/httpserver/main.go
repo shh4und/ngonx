@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"log"
+	"log/slog"
 	"ngonx/internal/request"
 	"ngonx/internal/response"
 	"ngonx/internal/server"
@@ -30,7 +31,7 @@ func main() {
 }
 
 func fakeRouterHandler(w io.Writer, req *request.Request) *server.HandlerError {
-	log.Println("req line -> ", req.RequestLine.RequestURI)
+	slog.Info("req line ->", "method", req.RequestLine.Method, "uri", req.RequestLine.RequestURI)
 	switch req.RequestLine.RequestURI {
 	case "/landing.html":
 		handlerError := fileHandler(w, req)
