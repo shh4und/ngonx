@@ -82,6 +82,8 @@ type Request struct {
 	chunkedBody    bool
 	chunkState     ChunkState
 	chunkRemaining int
+	hasTrailer     bool
+	TrailerHeaders headers.Headers
 }
 
 func NewRequest() *Request {
@@ -132,7 +134,11 @@ outer:
 
 		case StateHeadersDone:
 			r.chunkedBody = r.Headers["transfer-encoding"] == "chunked"
+			_, r.hasTrailer = r.Headers["trailer"]
 			if r.chunkedBody {
+				if r.hasTrailer {
+					r.TrailerHeaders = headers.NewHeaders()
+				}
 				r.ParserState = StateBodyInitialized
 				continue
 			} else {
@@ -249,7 +255,7 @@ func (r *Request) parseChunked(data []byte) (int, error) {
 
 		case ChunkStateTrailer:
 			// Reusa o parser de headers já existente
-			n, done, err := r.Headers.Parse(data[read:])
+			n, done, err := r.TrailerHeaders.Parse(data[read:])
 			read += n
 			if err != nil {
 				return read, err
