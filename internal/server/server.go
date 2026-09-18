@@ -94,7 +94,11 @@ func (s *Server) handle(conn net.Conn) {
 
 	handlerErr := s.handler(buf, req)
 	if handlerErr != nil {
-		writeHandlerError(buf, handlerErr)
+		buf.Reset() // <-- reset handler error residual bytes from buf
+		response.WriteStatusLine(conn, handlerErr.StatusCode)
+		response.WriteHeaders(conn, len(handlerErr.Message), nil, nil, nil, nil, nil, nil)
+		/** o que fazer com isso aqui meu deus 😭😭😭 */
+		writeHandlerError(buf, handlerErr) // write error on an empty buffer
 		body := buf.Bytes()
 		_, err = conn.Write(body)
 		if err != nil {
