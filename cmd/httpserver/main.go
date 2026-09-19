@@ -10,7 +10,9 @@ import (
 	"ngonx/internal/server"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
+	"strings"
 	"syscall"
 )
 
@@ -35,7 +37,7 @@ func main() {
 func fakeRouterHandler(w io.Writer, req *request.Request) *server.HandlerError {
 	slog.Info("req line ->", "method", req.RequestLine.Method, "uri", req.RequestLine.RequestURI)
 	switch req.RequestLine.RequestURI {
-	case "/static/landing.html":
+	case "/public/landing.html":
 		handlerError := fileHandler(w, req)
 		return handlerError
 
@@ -61,14 +63,63 @@ func defaultHandler(w io.Writer, req *request.Request) *server.HandlerError {
 }
 
 func fileHandler(w io.Writer, req *request.Request) *server.HandlerError {
-	baseDir := "static"
-	safePath := filepath.Base(req.RequestLine.RequestURI)
-	filePath := filepath.Join(baseDir, safePath)
+	baseDir := "./static"
+	routePrefix := "/public"
 
-	file, err := os.Open(filePath)
+	cleanedURI := path.Clean(req.RequestLine.RequestURI)
+
+	relPath := strings.TrimPrefix(cleanedURI, routePrefix)
+	relPath = strings.TrimPrefix(relPath, "/")
+
+	systemRelPath := filepath.FromSlash(relPath)
+
+	absBaseDir, err := filepath.Abs(baseDir)
 	if err != nil {
 		return &server.HandlerError{StatusCode: response.StatusNotFound,
 			Message: "File not found\n",
+		}
+	}
+
+	targetPath := filepath.Join(absBaseDir, systemRelPath)
+	absTargetPath, err := filepath.Abs(targetPath)
+	if err != nil {
+		return &server.HandlerError{StatusCode: response.StatusNotFound,
+			Message: "File not found\n",
+		}
+	}
+
+	prefix := absBaseDir + string(filepath.Separator)
+	if absTargetPath != absBaseDir && !strings.HasPrefix(absTargetPath, prefix) {
+		return &server.HandlerError{StatusCode: response.StatusForbidden,
+			Message: "Forbidden\n",
+		}
+
+	}
+
+	pathInfo, err := os.Stat(absTargetPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &server.HandlerError{StatusCode: response.StatusNotFound,
+				Message: "File not found\n",
+			}
+		}
+
+		return &server.HandlerError{StatusCode: response.StatusInternalServerError,
+			Message: "Internal Server Error\n",
+		}
+
+	}
+
+	if pathInfo.IsDir() {
+		return &server.HandlerError{StatusCode: response.StatusForbidden,
+			Message: "Forbidden\n",
+		}
+	}
+
+	file, err := os.Open(absTargetPath)
+	if err != nil {
+		return &server.HandlerError{StatusCode: response.StatusInternalServerError,
+			Message: "Failed to read file\n",
 		}
 	}
 	defer file.Close()
@@ -76,7 +127,7 @@ func fileHandler(w io.Writer, req *request.Request) *server.HandlerError {
 	_, err = io.Copy(w, file)
 	if err != nil {
 		return &server.HandlerError{StatusCode: response.StatusInternalServerError,
-			Message: "Failed to read file\n",
+			Message: "Failed to send file\n",
 		}
 	}
 

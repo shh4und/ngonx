@@ -309,8 +309,8 @@ func parseRequestLine(text []byte) (int, *RequestLine, error) {
 	if !isUpperLetter(string(reqParts[0])) || len(reqParts) != 3 || len(httpParts) != 2 {
 		return n, nil, ErrIncompleteRequestLine
 	}
-	//  string(httpParts[1]) != "1.1" &&
-	if string(httpParts[1]) != "1.0" {
+	if string(httpParts[1]) != "1.1" &&
+		string(httpParts[1]) != "1.0" {
 		return n, nil, ErrUnsuportedHTTPVersion
 	}
 
