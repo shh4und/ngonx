@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"log/slog"
@@ -22,18 +23,19 @@ func main() {
 		log.Fatalf("Error starting server: %v", err)
 	}
 	defer server.Close()
-	log.Printf("Server started on http://localhost:%d\n", port)
+
+	slog.Info("Server started on", "addr", fmt.Sprintf("http://localhost:%d", port))
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
-	log.Println("Server gracefully stopped")
+	slog.Info("Server gracefully stopped")
 }
 
 func fakeRouterHandler(w io.Writer, req *request.Request) *server.HandlerError {
 	slog.Info("req line ->", "method", req.RequestLine.Method, "uri", req.RequestLine.RequestURI)
 	switch req.RequestLine.RequestURI {
-	case "/landing.html":
+	case "/static/landing.html":
 		handlerError := fileHandler(w, req)
 		return handlerError
 

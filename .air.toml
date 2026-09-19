@@ -6,7 +6,7 @@ testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
-  args_bin = [" 2>&1 | hl -P"]
+  args_bin = []
   bin = "./tmp/main"
   cmd = "go build -o ./tmp/main ./cmd/httpserver/main.go"
   delay = 1000

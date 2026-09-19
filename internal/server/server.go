@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"io"
-	"log"
 	"log/slog"
 	"net"
 	"strconv"
@@ -33,7 +32,7 @@ func Serve(port int, handler Handler) (*Server, error) {
 
 	listener, err := net.Listen("tcp", ":"+addressPort)
 	if err != nil {
-		log.Printf("error at listening, err: %v", err.Error())
+		slog.Warn("error at listening", "err", err.Error())
 		return nil, err
 	}
 	server := &Server{
@@ -52,7 +51,7 @@ func (s *Server) Close() error {
 	s.inShutdown.Store(true)
 	err := s.listener.Close()
 	if err != nil {
-		log.Printf("error at closing listener, err: %v", err.Error())
+		slog.Warn("error at closing listener", "err", err.Error())
 	}
 
 	return err
@@ -65,7 +64,7 @@ func (s *Server) listen() {
 			if s.inShutdown.Load() {
 				return
 			}
-			log.Printf("error at accepting connection, err: %v", err.Error())
+			slog.Warn("error at accepting connection", "err", err.Error())
 			continue
 		}
 
@@ -84,9 +83,19 @@ func writeHandlerError(w io.Writer, handlerErr *HandlerError) {
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 
-	req, err := request.RequestFromReader(conn)
+	req, err, statusCode := request.RequestFromReader(conn)
 	if err != nil {
-		log.Printf("error at parsing request, err: %v", err.Error())
+		response.WriteStatusLine(conn, statusCode)
+
+		connection := "close"
+		response.WriteHeaders(conn, len("Not supported"), nil, &connection, nil, nil, nil, nil)
+		conn.Write([]byte("Not supported"))
+		slog.Warn("error at parsing request", "err", err.Error())
+
+		// if err != nil {
+		// 	slog.Warn("error at writing body for RequestFromReader error response", "error", err.Error())
+		// 	return
+		// }
 		return
 	}
 
@@ -101,7 +110,7 @@ func (s *Server) handle(conn net.Conn) {
 		body := []byte(handlerErr.Message)
 		_, err = conn.Write(body)
 		if err != nil {
-			slog.Error("func (s *Server) handle", response.ErrWritingBody, err.Error())
+			slog.Warn("func (s *Server) handle", response.ErrWritingBody, err.Error())
 			return
 		}
 		return
@@ -110,19 +119,19 @@ func (s *Server) handle(conn net.Conn) {
 	body := buf.Bytes()
 	err = response.WriteStatusLine(conn, response.StatusOK)
 	if err != nil {
-		log.Printf("error at writing status line, err: %v", err.Error())
+		slog.Warn("error at writing status line", "err", err.Error())
 		return
 	}
 	err = response.WriteHeaders(conn, len(body), nil, nil, nil, nil, nil, nil)
 	if err != nil {
-		log.Printf("%v: %v", response.ErrWritingHeaders, err.Error())
+		slog.Warn("error at writing headers", response.ErrWritingHeaders, err.Error())
 		return
 	}
 	_, err = conn.Write(body)
 	if err != nil {
-		log.Printf("%v: %v", response.ErrWritingBody, err.Error())
+		slog.Warn("error at writing body", response.ErrWritingBody, err.Error())
 		return
 	}
 
-	log.Printf("wrote %d bytes to %s", len(body), conn.RemoteAddr().String())
+	slog.Info("wrote", "bytes", len(body), "toaddr", conn.RemoteAddr().String())
 }

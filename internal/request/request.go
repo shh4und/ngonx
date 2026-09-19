@@ -7,6 +7,7 @@ import (
 
 	// "log/slog"
 	"ngonx/internal/headers"
+	"ngonx/internal/response"
 	"regexp"
 	"strconv"
 )
@@ -308,8 +309,8 @@ func parseRequestLine(text []byte) (int, *RequestLine, error) {
 	if !isUpperLetter(string(reqParts[0])) || len(reqParts) != 3 || len(httpParts) != 2 {
 		return n, nil, ErrIncompleteRequestLine
 	}
-
-	if string(httpParts[1]) != "1.1" && string(httpParts[1]) != "1.0" {
+	//  string(httpParts[1]) != "1.1" &&
+	if string(httpParts[1]) != "1.0" {
 		return n, nil, ErrUnsuportedHTTPVersion
 	}
 
@@ -320,7 +321,7 @@ func parseRequestLine(text []byte) (int, *RequestLine, error) {
 	}, nil
 }
 
-func RequestFromReader(reader io.Reader) (*Request, error) {
+func RequestFromReader(reader io.Reader) (*Request, error, response.StatusCode) {
 	request := NewRequest()
 	buf := make([]byte, BufferSize)
 	bufLen := 0
@@ -332,24 +333,28 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			// If we're waiting for body and got EOF before it's complete, that's an error
 			if !request.chunkedBody && request.ParserState == StateBodyInitialized && request.bodyWritten < request.contentLength {
 				request.ParserState = StateBodyError
-				return nil, ErrIncompleteBody
+				return nil, ErrIncompleteBody, response.StatusBadRequest
 			}
 			break
 		}
 
 		if err != nil {
-			return nil, err
+			return nil, err, response.StatusBadRequest
 		}
 
 		bufLen += n
 
 		parsedN, err := request.parse(buf[:bufLen])
 		if err != nil {
-			return nil, err
+			if err == ErrUnsuportedHTTPVersion {
+				//slog.Warn("ErrUnsuportedHTTPVersion", "error", err, "parsedN", parsedN)
+				return nil, err, response.StatusHTTPVersionNotSupported
+			}
+			return nil, err, response.StatusBadRequest
 		}
 		copy(buf, buf[parsedN:bufLen])
 		bufLen -= parsedN
 	}
 
-	return request, nil
+	return request, nil, 0
 }
