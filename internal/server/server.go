@@ -73,13 +73,6 @@ func (s *Server) listen() {
 	}
 }
 
-func writeHandlerError(w io.Writer, handlerErr *HandlerError) {
-	body := []byte(handlerErr.Message)
-	response.WriteStatusLine(w, handlerErr.StatusCode)
-	response.WriteHeaders(w, len(body), nil, nil, nil, nil, nil, nil)
-	w.Write(body)
-}
-
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 
@@ -88,14 +81,9 @@ func (s *Server) handle(conn net.Conn) {
 		response.WriteStatusLine(conn, statusCode)
 
 		connection := "close"
-		response.WriteHeaders(conn, len("Not supported"), nil, &connection, nil, nil, nil, nil)
-		conn.Write([]byte("Not supported"))
+		response.WriteHeaders(conn, 0, nil, &connection, nil, nil, nil, nil)
 		slog.Warn("error at parsing request", "err", err.Error())
 
-		// if err != nil {
-		// 	slog.Warn("error at writing body for RequestFromReader error response", "error", err.Error())
-		// 	return
-		// }
 		return
 	}
 
@@ -106,13 +94,7 @@ func (s *Server) handle(conn net.Conn) {
 	if handlerErr != nil {
 		buf.Reset() // <-- reset handler error residual bytes from buf
 		response.WriteStatusLine(conn, handlerErr.StatusCode)
-		response.WriteHeaders(conn, len(handlerErr.Message), nil, nil, nil, nil, nil, nil)
-		body := []byte(handlerErr.Message)
-		_, err = conn.Write(body)
-		if err != nil {
-			slog.Warn("func (s *Server) handle", response.ErrWritingBody, err.Error())
-			return
-		}
+		response.WriteHeaders(conn, 0, nil, nil, nil, nil, nil, nil)
 		return
 	}
 
@@ -124,12 +106,12 @@ func (s *Server) handle(conn net.Conn) {
 	}
 	err = response.WriteHeaders(conn, len(body), nil, nil, nil, nil, nil, nil)
 	if err != nil {
-		slog.Warn("error at writing headers", response.ErrWritingHeaders, err.Error())
+		slog.Warn("error at writing headers", "err", err.Error())
 		return
 	}
 	_, err = conn.Write(body)
 	if err != nil {
-		slog.Warn("error at writing body", response.ErrWritingBody, err.Error())
+		slog.Warn("error at writing body", "err", err.Error())
 		return
 	}
 
