@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"sync/atomic"
 
+	"ngonx/internal/headers"
 	"ngonx/internal/request"
 	"ngonx/internal/response"
 )
@@ -81,7 +82,7 @@ func (s *Server) handle(conn net.Conn) {
 		response.WriteStatusLine(conn, statusCode)
 
 		connection := "close"
-		response.WriteHeaders(conn, 0, nil, &connection, nil, nil, nil, nil)
+		response.WriteHeaders(conn, headers.Headers{"content-length": "0", "connection": connection})
 		slog.Warn("error at parsing request", "err", err.Error())
 
 		return
@@ -94,7 +95,7 @@ func (s *Server) handle(conn net.Conn) {
 	if handlerErr != nil {
 		buf.Reset() // <-- reset handler error residual bytes from buf
 		response.WriteStatusLine(conn, handlerErr.StatusCode)
-		response.WriteHeaders(conn, 0, nil, nil, nil, nil, nil, nil)
+		response.WriteHeaders(conn, nil)
 		return
 	}
 
@@ -104,7 +105,8 @@ func (s *Server) handle(conn net.Conn) {
 		slog.Warn("error at writing status line", "err", err.Error())
 		return
 	}
-	err = response.WriteHeaders(conn, len(body), nil, nil, nil, nil, nil, nil)
+	contentLengthStr := strconv.Itoa(len(body))
+	err = response.WriteHeaders(conn, headers.Headers{"content-length": contentLengthStr})
 	if err != nil {
 		slog.Warn("error at writing headers", "err", err.Error())
 		return

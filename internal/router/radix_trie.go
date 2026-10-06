@@ -20,12 +20,9 @@ func NewRadixTree() *RadixTree {
 	return &RadixTree{root: &radixNode{}}
 }
 func longestCommonPrefix(a, b string) int {
-	max := len(a)
-	if len(b) < max {
-		max = len(b)
-	}
+	max := min(len(a), len(b))
 
-	for i := 0; i < max; i++ {
+	for i := range max {
 		if a[i] != b[i] {
 			return i
 		}
