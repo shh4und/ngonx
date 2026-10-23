@@ -36,3 +36,5 @@ go.work.sum
 
 # tmp files
 tmp/
+
+.vibe-wise

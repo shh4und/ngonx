@@ -140,25 +140,7 @@ func fakeRouterHandler(w io.Writer, req *request.Request) *server.HandlerError {
 
 ---
 
-### 2.6 Vazamento de conexões (File Descriptors) no `tcplistener`
-
-**Arquivo:** `cmd/tcplistener/main.go` (linha 33)
-
-**Trecho atual:**
-```go
-		if request.Body != nil {
-			fmt.Printf("Body:\n- %s", string(request.Body))
-		}
-		// conn.Close()
-	}
-```
-
-* **Erro técnico:** A chamada de fechamento do socket está comentada dentro de um laço contínuo de escuta. Cada nova conexão TCP aceita pelo listener permanece aberta indefinidamente no sistema operacional, esgotando recursos e impedindo que o cliente finalize sua ponta do handshake de encerramento.
-* **Conceito para correção:** Certifique-se de que toda conexão aberta seja fechada ao final do seu ciclo de tratamento, utilizando o encerramento postergado ou explícito logo após o término do processamento.
-
----
-
-### 2.7 Divergência no suporte a conexões persistentes (Keep-Alive)
+### 2.6 Divergência no suporte a conexões persistentes (Keep-Alive)
 
 **Arquivos:** `internal/server/server.go` e `internal/response/response.go`
 
@@ -167,7 +149,7 @@ func fakeRouterHandler(w io.Writer, req *request.Request) *server.HandlerError {
 
 ---
 
-### 2.8 Falta de suporte para respostas em streaming com `Transfer-Encoding: chunked`
+### 2.7 Falta de suporte para respostas em streaming com `Transfer-Encoding: chunked`
 
 **Arquivo:** `internal/response/response.go`
 
@@ -176,7 +158,7 @@ func fakeRouterHandler(w io.Writer, req *request.Request) *server.HandlerError {
 
 ---
 
-### 2.9 Estrutura de cabeçalhos engessada e prolixa
+### 2.8 Estrutura de cabeçalhos engessada e prolixa
 
 **Arquivo:** `internal/response/response.go` (linhas 77–113)
 
@@ -192,7 +174,7 @@ func GetDefaultHeaders(contentLen int, contentType *string, connection *string, 
 
 ---
 
-### 2.10 Acoplamento de responsabilidades no pacote `main`
+### 2.9 Acoplamento de responsabilidades no pacote `main`
 
 **Arquivo:** `cmd/httpserver/main.go`
 
@@ -201,12 +183,13 @@ func GetDefaultHeaders(contentLen int, contentType *string, connection *string, 
 
 ---
 
-### 2.11 Resíduos e código sem uso
+### 2.10 Resíduos e código sem uso
 
 **Arquivo:** `internal/request/request.go`
 
 * **Erro técnico:** Existem variáveis globais de compilação de expressões regulares e definições de erros que não são referenciadas em nenhum ponto do código (por exemplo, `isRequestLineValid` e `ErrMalformedMsg`). Expressões regulares compiladas globalmente sem utilização representam desperdício de inicialização e criam ruído na leitura do código.
 * **Conceito para correção:** Remova declarações mortas ou, caso fossem destinadas a validações que ficaram incompletas, integre-as nas rotinas cabíveis.
+
 
 ---
 
@@ -251,8 +234,7 @@ Para otimizar o seu aprendizado sobre o funcionamento interno do protocolo HTTP 
    - Manter consistência na serialização da resposta de erro em relação à de sucesso.
 2. **Responder ao cliente em falhas de parsing da requisição:**
    - Em vez de fechar a conexão de imediato no `RequestFromReader`, mapear os erros de parsing e emitir uma resposta HTTP adequada (ex: 400 Bad Request) antes do encerramento.
-3. **Corrigir fechamento de socket no listener de depuração:**
-   - Descomentar/garantir o fechamento das conexões tratadas em `cmd/tcplistener/main.go`.
+
 
 ---
 
@@ -312,7 +294,7 @@ Marque os itens conforme for implementando e testando na sua rotina de desenvolv
 ### Fase 1: Integridade e Tratamento de Erros
 - [ ] Tratar isolamento do buffer em `writeHandlerError` para evitar envio de dados parciais residuais
 - [ ] Enviar resposta HTTP de erro (ex: 400 Bad Request) quando `RequestFromReader` falhar
-- [ ] Garantir o encerramento do socket `conn` no laço de `cmd/tcplistener/main.go`
+
 
 ### Fase 2: Validação da Máquina de Estados (Testes)
 - [ ] Criar teste de requisição chunked válida com múltiplos chunks em `request_test.go`
@@ -335,4 +317,40 @@ Marque os itens conforme for implementando e testando na sua rotina de desenvolv
 - [ ] Substituir parâmetros posicionais de `GetDefaultHeaders` por struct de configuração
 - [ ] Extrair roteador e handlers de `cmd/httpserver/main.go` para pacotes em `internal/`
 - [ ] Remover regex e erros não utilizados em `request.go`
-- [ ] Padronizar logging com `slog` em `server.go` e listeners
+- [ ] Padronizar logging com `slog` em `server.go`
+
+---
+
+## 5. Pacotes Secundários e Backlog de Baixa Prioridade (TCP / UDP)
+
+> **Nota de Escopo:** Os pacotes em `cmd/tcplistener`, `cmd/udpreceiver` e `cmd/udpsender` são utilitários experimentais criados para testes manuais e exploração de rede em baixo nível. Eles não fazem parte do servidor HTTP principal (`cmd/httpserver` e `internal/*`) e possuem prioridade secundária/baixa.
+
+### 5.1 Vazamento de conexões (File Descriptors) no `tcplistener`
+
+**Arquivo:** `cmd/tcplistener/main.go` (linha 33)
+
+**Trecho atual:**
+```go
+		if request.Body != nil {
+			fmt.Printf("Body:\n- %s", string(request.Body))
+		}
+		// conn.Close()
+	}
+```
+
+* **Erro técnico:** A chamada de fechamento do socket está comentada dentro de um laço contínuo de escuta. Cada nova conexão TCP aceita pelo listener permanece aberta indefinidamente no sistema operacional, esgotando recursos e impedindo que o cliente finalize sua ponta do handshake de encerramento. Além disso, o pacote não acompanha as mudanças de assinatura de `RequestFromReader`.
+* **Conceito para correção:** Fechar explicitamente o socket ao fim do ciclo com `defer conn.Close()` ou encerramento direto, e ajustar os valores de retorno da chamada de parsing para manter a compilação válida caso seja executado.
+
+---
+
+### 5.2 Utilitários UDP (`udpreceiver` e `udpsender`)
+
+**Arquivos:** `cmd/udpreceiver/main.go` e `cmd/udpsender/main.go`
+
+* **Status:** Fora do escopo do protocolo HTTP/1.1. Mantidos apenas como demonstração de comunicação datagrama UDP sem conexão.
+
+---
+
+### Checklist de Baixa Prioridade (Backlog)
+- [ ] Corrigir assinatura desatualizada de `RequestFromReader` em `cmd/tcplistener/main.go`
+- [ ] Garantir o encerramento do socket `conn` no laço de `cmd/tcplistener/main.go`
